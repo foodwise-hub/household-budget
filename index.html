@@ -612,8 +612,23 @@ function render(){
     if(b.dataset.view===state.view) b.setAttribute('aria-current','page');
     else b.removeAttribute('aria-current');
   });
-  document.getElementById('main').innerHTML = ({home:viewHome,budget:viewBudget,goals:viewGoals,import:viewImport})[state.view]();
-  window.scrollTo({top:0,behavior:'instant'});
+  /* Rebuilding the view throws away the scroll position and the focused
+     control, so a toggle deep down the page would bounce you to the top.
+     Both are captured and put back. Switching views scrolls to the top
+     from go() instead. */
+  const main = document.getElementById('main');
+  const y = window.scrollY;
+  const held = main.contains(document.activeElement) ? document.activeElement : null;
+  const heldKey = held && held.getAttribute('aria-label') ? held.tagName+'|'+held.getAttribute('aria-label') : null;
+
+  main.innerHTML = ({home:viewHome,budget:viewBudget,goals:viewGoals,import:viewImport})[state.view]();
+
+  window.scrollTo({top:y,behavior:'instant'});
+  if(heldKey){
+    const again = [...main.querySelectorAll('[aria-label]')]
+      .find(e => e.tagName+'|'+e.getAttribute('aria-label') === heldKey);
+    if(again) again.focus({preventScroll:true});
+  }
   persistIfChanged();
 }
 
@@ -1498,7 +1513,7 @@ function removeRule(i){ state.rules.splice(i,1); render(); flash('Rule removed.'
 /* ============================================================
    9. NAVIGATION
    ============================================================ */
-function go(v){ state.view = v; render(); }
+function go(v){ state.view = v; render(); window.scrollTo({top:0,behavior:'instant'}); }
 document.querySelectorAll('.nav button[data-view]').forEach(b=>b.addEventListener('click',()=>go(b.dataset.view)));
 document.getElementById('fabBtn').addEventListener('click', quickAdd);
 document.getElementById('prevMonth').addEventListener('click', ()=>shiftMonth(-1));
