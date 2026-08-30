@@ -283,6 +283,25 @@ input:focus,select:focus{border-color:var(--ink);background:var(--card);outline:
 .switch::after{content:"";position:absolute;top:3px;left:3px;width:21px;height:21px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .2s cubic-bezier(.34,1.4,.64,1)}
 .switch[aria-checked="true"]::after{transform:translateX(19px)}
 
+.cbox{
+  position:relative;width:24px;height:24px;flex:none;padding:0;
+  border:1.5px solid var(--edge);background:var(--card);border-radius:7px;
+  transition:background .16s ease,border-color .16s ease;
+}
+.cbox[aria-checked="true"]{background:var(--ink);border-color:var(--ink)}
+.cbox::after{
+  content:"";position:absolute;left:7.5px;top:3.5px;width:5px;height:10px;
+  border:solid #fff;border-width:0 2.5px 2.5px 0;
+  transform:rotate(45deg) scale(0);transition:transform .16s cubic-bezier(.34,1.4,.64,1);
+}
+.cbox[aria-checked="true"]::after{transform:rotate(45deg) scale(1)}
+.row.cand[aria-checked="true"]{background:var(--paper)}
+.candsum{
+  display:flex;align-items:center;justify-content:space-between;gap:var(--s3);
+  margin:var(--s2) 0 var(--s4);font-size:13px;color:var(--muted);
+}
+.candall{background:none;border:0;padding:0;font:inherit;font-weight:600;color:var(--ink);text-decoration:underline;text-underline-offset:2px}
+
 .tag{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--paper);color:var(--ink-soft);letter-spacing:.02em}
 .tag.card-t{background:var(--t-sky);color:var(--t-sky-i)}
 .tag.auto-t{background:var(--t-sage);color:var(--t-sage-i)}
@@ -820,7 +839,10 @@ function viewBudget(){
         <div class="right"><div class="val num">${money(r.amount,true)}</div></div>
       </button>`;
     }).join('')}
-    <div style="margin-top:var(--s4)"><button type="button" class="btn ghost" onclick="editRecurring()">Add a recurring payment</button></div>
+    <div style="margin-top:var(--s4);display:grid;gap:var(--s2)">
+      <button type="button" class="btn ghost" onclick="findRecurring()">Find recurring payments</button>
+      <button type="button" class="btn ghost" onclick="editRecurring()">Add a recurring payment</button>
+    </div>
   </section>
 
   <section class="card">
@@ -1291,6 +1313,254 @@ function deleteRecurring(id){
   state.recurring = state.recurring.filter(r=>r.id!==id);
   state.transactions.forEach(t=>{ if(t.rec===id) delete t.rec; });
   closeSheet(); render(); flash('Recurring payment deleted.');
+}
+
+/* ============================================================
+   8b. FIND RECURRING — scan imported history for repeat charges
+   ------------------------------------------------------------
+   Only card charges can be detected this way: rent, utilities and
+   anything else paid outside the Chase card never appears in the
+   history, so nothing here is ever created as autopay.
+   ============================================================ */
+
+/* Statement lines carry a store or reference number that changes every
+   time — "TRADER JOE'S #182" one month, "#4411" the next. Stripping those
+   leaves a stable merchant key to group by. */
+const PROCESSOR_PREFIX = /^(SQ\s*\*|TST\s*\*|SP\s*\*|PY\s*\*|PAYPAL\s*\*|WWW\.|POS\s+|PURCHASE\s+)/;
+
+function normDesc(desc){
+  let s = String(desc||'').toUpperCase().replace(/[‘’']/g,'').replace(/\s+/g,' ').trim();
+  s = s.replace(PROCESSOR_PREFIX,'').trim();
+  const star = s.split('*')[0].trim();          // AMAZON.COM*RT4YQ · GEICO *AUTO
+  if(star.length >= 3) s = star;
+  for(let i=0;i<4;i++){                          // trailing store / reference numbers
+    const before = s
+      .replace(/\s*#\s*[\w-]+$/,'')
+      .replace(/\s+[0-9][\w-]*$/,'')
+      .replace(/[\s\-.,]+$/,'')
+      .trim();
+    if(before.length < 3 || before === s) break; // never strip a name away entirely
+    s = before;
+  }
+  return s.replace(/\s+/g,' ').trim();
+}
+
+/* The phrase imports will match on. It has to be a literal substring of
+   the real statement text, so it comes from the raw descriptions rather
+   than the normalized key. */
+function commonPhrase(descs){
+  const ups = descs.map(d=>String(d).toUpperCase().trim());   // spacing left as it appears
+  let p = ups[0] || '';
+  for(let i=1;i<ups.length;i++){
+    let n=0;
+    while(n<p.length && n<ups[i].length && p[n]===ups[i][n]) n++;
+    p = p.slice(0,n);
+    if(!p) break;
+  }
+  p = p.replace(/[\s#*\-.,]*\d*$/,'').replace(/[^A-Z0-9)]+$/,'').trim();
+  if(p.length < 3){                              // nothing shared — fall back to a solid word
+    const word = (ups[0]||'').split(/[\s*#]+/).find(w=>w.length>3);
+    p = word || (ups[0]||'').slice(0,12).trim();
+  }
+  /* An import only links a charge when the raw text contains this phrase,
+     so a phrase that doesn't is worse than useless. */
+  return ups.every(u=>u.includes(p)) ? p : ((ups[0]||'').split(/[\s*#]+/).find(w=>w.length>3) || p);
+}
+
+/* "SPOTIFY USA" reads better as "Spotify USA" than "Spotify Usa" — short
+   tokens and anything with punctuation in it are left alone. */
+function titleCase(key){
+  return key.replace(/\.(COM|NET|ORG)$/,'')
+    .split(' ')
+    .map(w => (w.length <= 3 || /[^A-Z]/.test(w)) ? w
+      : w.charAt(0) + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
+const monthIdx = m => (+m.slice(0,4))*12 + (+m.slice(5,7)) - 1;
+const median = ns => { const s = ns.slice().sort((a,b)=>a-b), h = s.length>>1;
+  return s.length%2 ? s[h] : (s[h-1]+s[h])/2; };
+
+/* A candidate has to look like one charge a month, not a shop you visit
+   often: three or more distinct months, gaps of about a month, and
+   roughly a single charge in each of those months. */
+function detectRecurring(){
+  const pool = state.transactions.filter(t => !t.rec && t.src !== 'auto' && t.amount > 0);
+  if(!pool.length) return [];
+
+  const groups = {};
+  pool.forEach(t=>{
+    const key = normDesc(t.desc);
+    if(key.length < 3) return;
+    (groups[key] = groups[key] || []).push(t);
+  });
+
+  const allMonths = [...new Set(state.transactions.map(t=>t.date.slice(0,7)))].sort();
+  const newestIdx = allMonths.length ? monthIdx(allMonths[allMonths.length-1]) : 0;
+
+  const found = [];
+  Object.keys(groups).forEach(key=>{
+    const txs = groups[key];
+    const months = [...new Set(txs.map(t=>t.date.slice(0,7)))].sort();
+    if(months.length < 3) return;
+
+    const idxs = months.map(monthIdx);
+    const gaps = idxs.slice(1).map((n,i)=>n-idxs[i]);
+    const avgGap = (idxs[idxs.length-1] - idxs[0]) / (idxs.length - 1);
+    if(avgGap > 1.6 || Math.max.apply(null, gaps) > 3) return;  // not monthly, or two separate runs
+    if(txs.length / months.length > 1.4) return;                // a shop you visit often
+    if(idxs[idxs.length-1] < newestIdx - 2) return;              // stopped months ago
+
+    const amounts = txs.map(t=>t.amount);
+    const mid = median(amounts);
+    if(!(mid > 0)) return;
+    const spread = (Math.max.apply(null, amounts) - Math.min.apply(null, amounts)) / mid;
+
+    const counts = {};
+    txs.forEach(t=>{ if(t.cat && t.cat!=='uncat') counts[t.cat] = (counts[t.cat]||0)+1; });
+    const cat = Object.keys(counts).sort((a,b)=>counts[b]-counts[a])[0] || 'uncat';
+
+    found.push({
+      key,
+      name: titleCase(key),
+      phrase: commonPhrase(txs.map(t=>t.desc)),
+      cat,
+      amount: Math.round(mid*100)/100,
+      estimated: spread > 0.10,
+      spread,
+      months: months.length,
+      first: months[0],
+      last: months[months.length-1],
+      txIds: txs.map(t=>t.id),
+      descs: txs.map(t=>t.desc),
+      picked: false
+    });
+  });
+
+  return found.filter(c=>!alreadyTracked(c))
+              .sort((a,b)=> b.months - a.months || a.spread - b.spread || b.amount - a.amount);
+}
+
+/* Anything already on the Recurring list is left alone. */
+function alreadyTracked(cand){
+  return state.recurring.some(r=>{
+    const m = (r.match||'').toUpperCase().trim();
+    if(m.length >= 3 && cand.descs.some(d=>String(d).toUpperCase().includes(m))) return true;
+    const rn = normDesc(r.name);
+    if(rn.length < 4 || cand.key.length < 4) return false;
+    return rn === cand.key || rn.includes(cand.key) || cand.key.includes(rn);
+  });
+}
+
+/* ---------- review sheet ---------- */
+let scanFound = [];
+
+function findRecurring(){
+  if(!state.transactions.length){
+    openSheet(`
+      <h2 id="sheetTitle">Nothing to scan yet</h2>
+      <p class="hint">There are no transactions loaded, so there is no history to look through. Import a Chase CSV first.</p>
+      <button type="button" class="btn" onclick="closeSheet(); go('import')">Go to Import</button>
+    `);
+    return;
+  }
+  scanFound = detectRecurring();
+
+  if(!scanFound.length){
+    openSheet(`
+      <h2 id="sheetTitle">No new recurring payments found</h2>
+      <p class="hint">Nothing in your history repeats monthly without already being on your list. A charge has to appear in at least three months, about a month apart, to be picked up — and anything paid outside the Chase card never shows up in this data at all.</p>
+      <button type="button" class="btn ghost" onclick="closeSheet()">Close</button>
+    `);
+    return;
+  }
+
+  openSheet(`
+    <h2 id="sheetTitle">${scanFound.length} possible recurring payment${scanFound.length===1?'':'s'}</h2>
+    <p class="hint">Charges that come back month after month and aren't on your list yet. Tick the ones that really are recurring — nothing is added until you do.</p>
+    <div class="candsum">
+      <span id="candCount">None selected</span>
+      <button type="button" class="candall" id="candAll" onclick="toggleAllCands()">Select all</button>
+    </div>
+    <div id="candList">${scanFound.map((c,i)=>candRow(c,i)).join('')}</div>
+    <p class="hint" style="margin:var(--s4) 0">Each one is added as a Chase card payment, matched on the statement text. Rent, utilities and anything else paid another way have to be added by hand.</p>
+    <button type="button" class="btn" id="candAdd" disabled onclick="addFoundRecurring()">Add selected</button>
+  `);
+}
+
+function candRow(c,i){
+  const cat = catById(c.cat);
+  const shortMonth = m => new Date(m+'-02').toLocaleDateString('en-US',{month:'short',year:'numeric'});
+  const span = c.first === c.last ? shortMonth(c.first) : `${shortMonth(c.first)} – ${shortMonth(c.last)}`;
+  return `<button type="button" class="row cand" role="checkbox" aria-checked="false" data-i="${i}" onclick="toggleCand(${i})">
+    <span class="cbox" aria-hidden="true"></span>
+    <span class="chip" style="background:var(--t-${cat.tint});color:var(--t-${cat.tint}-i)">${cat.icon}</span>
+    <span class="body">
+      <span class="name" style="display:block">${esc(c.name)}</span>
+      <span class="meta" style="display:block">${esc(cat.name)} · ${c.months} months · ${esc(span)}</span>
+      <span class="meta" style="display:flex;gap:5px;flex-wrap:wrap;margin-top:4px">
+        <span class="tag card-t">Matches “${esc(c.phrase)}”</span>
+        ${c.estimated?'<span class="tag est">Amount varies</span>':''}
+      </span>
+    </span>
+    <span class="right"><span class="val num" style="display:block">${money(c.amount,true)}</span></span>
+  </button>`;
+}
+
+function markCand(i, on){
+  const el = document.querySelector(`.cand[data-i="${i}"]`);
+  if(!el) return;
+  el.setAttribute('aria-checked', String(on));
+  el.querySelector('.cbox').setAttribute('aria-checked', String(on));
+}
+
+function toggleCand(i){
+  scanFound[i].picked = !scanFound[i].picked;
+  markCand(i, scanFound[i].picked);
+  refreshCandCount();
+}
+
+function toggleAllCands(){
+  const on = scanFound.some(c=>!c.picked);       // anything unticked → tick them all
+  scanFound.forEach((c,i)=>{ c.picked = on; markCand(i, on); });
+  refreshCandCount();
+}
+
+function refreshCandCount(){
+  const picked = scanFound.filter(c=>c.picked);
+  const n = picked.length;
+  const label = document.getElementById('candCount');
+  const btn = document.getElementById('candAdd');
+  const all = document.getElementById('candAll');
+  if(label) label.textContent = n
+    ? `${n} selected · ${money(picked.reduce((s,c)=>s+c.amount,0),false)} a month`
+    : 'None selected';
+  if(btn){
+    btn.disabled = !n;
+    btn.textContent = n ? `Add ${n} recurring payment${n===1?'':'s'}` : 'Add selected';
+  }
+  if(all) all.textContent = scanFound.some(c=>!c.picked) ? 'Select all' : 'Clear all';
+}
+
+function addFoundRecurring(){
+  const picked = scanFound.filter(c=>c.picked);
+  if(!picked.length) return;
+  picked.forEach(c=>{
+    const id = uid('r');
+    /* Card payments only — no autopay day, matched on the statement text. */
+    state.recurring.push({
+      id, name:c.name, amount:c.amount, cat:c.cat,
+      method:'card', day:null, match:c.phrase, estimated:c.estimated
+    });
+    /* Link the charges it was detected from, exactly as an import would.
+       Without this the payment reads as still owed in a month it has
+       already been paid in. */
+    const ids = new Set(c.txIds);
+    state.transactions.forEach(t=>{ if(ids.has(t.id) && !t.rec) t.rec = id; });
+  });
+  scanFound = [];
+  closeSheet(); render();
+  flash(`${picked.length} recurring payment${picked.length===1?'':'s'} added.`);
 }
 
 /* --- budgets --- */
