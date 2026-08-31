@@ -385,7 +385,7 @@ body.authed #authScreen{display:none}
 .catscroll .chip{width:26px;height:26px;border-radius:9px;font-size:13px}
 
 .bars{display:flex;align-items:flex-end;gap:4px;height:150px;margin:var(--s4) 0 var(--s2)}
-.barcol{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;gap:5px;
+.barcol{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;gap:5px;
   background:none;border:0;padding:0;border-radius:6px 6px 0 0;transition:opacity .15s ease}
 .barcol:hover{opacity:.75}
 .barcol .bv{font-size:9.5px;color:var(--muted);font-variant-numeric:tabular-nums;line-height:1}
@@ -417,7 +417,8 @@ body.authed #authScreen{display:none}
 .hist{display:flex;align-items:flex-end;gap:3px;height:70px;margin:var(--s2) 0}
 .hist i{flex:1;background:var(--edge);border-radius:3px 3px 0 0;min-height:2px}
 .hist i.on{background:var(--signal)}
-.histlabels{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted)}
+.histlabels{display:flex;gap:3px;font-size:10.5px;color:var(--muted)}
+.histlabels span{flex:1;min-width:0;text-align:center;white-space:nowrap}
 
 .iconbtn{width:36px;height:36px;border:1px solid var(--edge);background:var(--card);border-radius:50%;
   display:grid;place-items:center;transition:background .18s ease,transform .18s ease}
@@ -1022,7 +1023,10 @@ function lastMonths(n){
 }
 /* Last n Monday-start weeks, ending with the week containing today */
 function lastWeeks(n){
-  const out=[], base=new Date(today);
+  /* Midnight, not the current clock time: transactions are placed at local
+     noon, so a week that began at, say, 12:08 would push that Monday's own
+     charges into the previous week — and regroup them as the day wore on. */
+  const out=[], base=new Date(today.getFullYear(), today.getMonth(), today.getDate());
   base.setDate(base.getDate() - ((base.getDay()+6)%7));   // back to Monday
   for(let i=n-1;i>=0;i--){
     const d=new Date(base); d.setDate(d.getDate()-i*7);
@@ -1032,6 +1036,9 @@ function lastWeeks(n){
   return out;
 }
 const txInMonth = (cat,m) => state.transactions.filter(t=>t.cat===cat && t.date.slice(0,7)===m);
+/* Bar columns are only ~20px wide, so thousands are shortened to fit.
+   The exact figure is in the bar's aria-label and in the detail card. */
+const barValue = v => !v ? '' : v >= 1000 ? Math.round(v/100)/10+'k' : String(Math.round(v));
 function txInWeek(cat,w){
   const end=new Date(w.start); end.setDate(end.getDate()+7);
   return state.transactions.filter(t=>{
@@ -1088,7 +1095,7 @@ function trendCategory(){
     <div class="bars">
       ${buckets.map((b,i)=>`
         <button type="button" class="barcol" aria-pressed="${i===sel}" aria-label="${esc(b.label)}: ${money(vals[i])}" onclick="setTrend('bar',${i})">
-          <span class="bv">${vals[i]?money(vals[i],false).replace('$',''):''}</span>
+          <span class="bv">${barValue(vals[i])}</span>
           <span class="br" style="height:${Math.max(2, vals[i]/max*100)}%"></span>
         </button>`).join('')}
     </div>
@@ -1174,7 +1181,7 @@ function trendYear(){
       const avg = vals.reduce((a,b)=>a+b,0)/12;
       return `<div class="bars">
         ${months.map((m,i)=>`<button type="button" class="barcol" aria-label="${esc(monthLabel(m))}: ${money(vals[i])}" onclick="jumpMonth('${m}')">
-          <span class="bv">${vals[i]?Math.round(vals[i]/1000*10)/10+'k':''}</span>
+          <span class="bv">${barValue(vals[i])}</span>
           <span class="br" style="height:${Math.max(2,vals[i]/max*100)}%"></span>
         </button>`).join('')}
       </div>
@@ -1207,6 +1214,7 @@ function trendSize(){
 
   /* distribution across fixed buckets, with the active range highlighted */
   const edges=[0,25,50,75,100,150,200,300,500,1000];
+  const ticks={0:'$0',2:'$50',4:'$100',7:'$300',9:'$1k+'};   // one per bucket it names
   const counts=edges.map((e,i)=>pool.filter(t=>t.amount>=e && (i===edges.length-1||t.amount<edges[i+1])).length);
   const cmax=Math.max(...counts,1);
 
@@ -1234,7 +1242,7 @@ function trendSize(){
         return `<i class="${on?'on':''}" style="height:${Math.max(2,n/cmax*100)}%" title="${n} between $${lo}${hi?'–$'+hi:'+'}"></i>`;
       }).join('')}
     </div>
-    <div class="histlabels"><span>$0</span><span>$100</span><span>$300</span><span>$1k+</span></div>
+    <div class="histlabels">${counts.map((_,i)=>`<span>${ticks[i]||''}</span>`).join('')}</div>
 
     <div class="statrow" style="margin:var(--s4) 0 0">
       <div class="stat" style="box-shadow:none;background:var(--paper)">
