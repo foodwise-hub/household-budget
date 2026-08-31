@@ -370,6 +370,60 @@ body.authed #authScreen{display:none}
 .syncpill.ok{background:var(--good)}
 .syncpill.bad{background:var(--alert);cursor:pointer}
 
+
+/* ============================================================
+   TRENDS — charts
+   ============================================================ */
+.catscroll{display:flex;gap:var(--s2);overflow-x:auto;padding:0 0 var(--s2);margin:0 0 var(--s4);scrollbar-width:none}
+.catscroll::-webkit-scrollbar{display:none}
+.catscroll button{
+  flex:none;display:flex;align-items:center;gap:7px;padding:8px 13px 8px 8px;border:1.5px solid transparent;
+  background:var(--paper);border-radius:999px;font-size:13px;color:var(--ink-soft);white-space:nowrap;
+  transition:border-color .15s ease,background .15s ease;
+}
+.catscroll button[aria-pressed="true"]{border-color:var(--ink);background:var(--card);color:var(--ink);font-weight:600}
+.catscroll .chip{width:26px;height:26px;border-radius:9px;font-size:13px}
+
+.bars{display:flex;align-items:flex-end;gap:4px;height:150px;margin:var(--s4) 0 var(--s2)}
+.barcol{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;gap:5px;
+  background:none;border:0;padding:0;border-radius:6px 6px 0 0;transition:opacity .15s ease}
+.barcol:hover{opacity:.75}
+.barcol .bv{font-size:9.5px;color:var(--muted);font-variant-numeric:tabular-nums;line-height:1}
+.barcol .br{width:100%;background:var(--signal);border-radius:5px 5px 0 0;min-height:3px;transition:height .4s cubic-bezier(.22,.8,.3,1)}
+.barcol[aria-pressed="true"] .br{background:var(--ink)}
+.barcol[aria-pressed="true"] .bv{color:var(--ink);font-weight:600}
+.barlabels{display:flex;gap:4px;margin-bottom:var(--s4)}
+.barlabels span{flex:1;text-align:center;font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden}
+
+.donutwrap{display:flex;justify-content:center;padding:var(--s2) 0 var(--s4)}
+.donut{transform:rotate(-90deg);transform-origin:90px 90px}   /* spin about the circle centre, not the SVG corner */
+.donut circle{fill:none;stroke-width:26}
+.donutmid{text-anchor:middle}
+.donutmid .dm-big{font-size:26px;font-weight:700;font-family:var(--display);fill:var(--ink)}
+.donutmid .dm-sm{font-size:10px;fill:var(--muted);font-family:var(--body);letter-spacing:.06em}
+
+.legrow{display:flex;align-items:center;gap:var(--s3);padding:10px 0;border-bottom:1px solid var(--edge)}
+.legrow:last-child{border-bottom:0}
+.legrow .dot{width:11px;height:11px;border-radius:3px;flex:none}
+.legrow .ln{flex:1;font-size:14px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.legrow .lp{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;width:38px;text-align:right}
+.legrow .lv{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;font-family:var(--display)}
+
+.rangegrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:var(--s2);margin-bottom:var(--s4)}
+.rangegrid button{background:var(--paper);border:1.5px solid transparent;border-radius:var(--r-sm);padding:11px var(--s2);
+  font-size:13px;color:var(--ink-soft);transition:border-color .15s ease,background .15s ease}
+.rangegrid button[aria-pressed="true"]{border-color:var(--ink);background:var(--card);color:var(--ink);font-weight:600}
+
+.hist{display:flex;align-items:flex-end;gap:3px;height:70px;margin:var(--s2) 0}
+.hist i{flex:1;background:var(--edge);border-radius:3px 3px 0 0;min-height:2px}
+.hist i.on{background:var(--signal)}
+.histlabels{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted)}
+
+.iconbtn{width:36px;height:36px;border:1px solid var(--edge);background:var(--card);border-radius:50%;
+  display:grid;place-items:center;transition:background .18s ease,transform .18s ease}
+.iconbtn:hover{background:var(--paper);transform:translateY(-1px)}
+.iconbtn svg{width:16px;height:16px}
+
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{transition-duration:.01ms !important;animation-duration:.01ms !important}
 }
@@ -399,6 +453,9 @@ body.authed #authScreen{display:none}
       <div class="sub" id="viewSub">August 2026</div>
     </div>
     <div class="monthnav" id="monthNav">
+      <button type="button" class="iconbtn" id="importBtn" aria-label="Import a Chase CSV" style="margin-right:6px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="M8 11l4 4 4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+      </button>
       <button type="button" id="prevMonth" aria-label="Previous month">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
       </button>
@@ -428,9 +485,9 @@ body.authed #authScreen{display:none}
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/></svg>
       Goals
     </button>
-    <button type="button" data-view="import">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="M8 11l4 4 4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
-      Import
+    <button type="button" data-view="trends">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16"/><path d="M7 16V9"/><path d="M12 16V5"/><path d="M17 16v-4"/></svg>
+      Trends
     </button>
   </nav>
 </div>
@@ -615,6 +672,7 @@ document.addEventListener('keydown', e => { if(e.key==='Escape' && sheetEl.class
 const isPastMonth = () => state.month < thisMonthKey();
 const TITLES = {home:[()=>isCurrentMonth()?'This month':monthLabel(state.month),
                       ()=>isCurrentMonth()?monthLabel(state.month):'Closed month'],
+                trends:[()=>'Trends',()=>'Categories, the past year, and outliers'],
                 budget:[()=>'Budget',()=>'Caps, recurring & commitments'],
                 goals:[()=>'Goals',()=>'Assets and what you\'re building toward'],
                 import:[()=>'Import',()=>'Chase CSV and categorization rules']};
@@ -625,7 +683,9 @@ function render(){
   const [t,s] = TITLES[state.view];
   document.getElementById('viewTitle').textContent = t();
   document.getElementById('viewSub').textContent = s();
-  document.getElementById('monthNav').style.visibility = (state.view==='import') ? 'hidden' : 'visible';
+  const showMonth = !['import','trends'].includes(state.view);
+  document.getElementById('prevMonth').style.display = showMonth ? '' : 'none';
+  document.getElementById('nextMonth').style.display = showMonth ? '' : 'none';
   document.getElementById('nextMonth').disabled = isCurrentMonth();
   document.querySelectorAll('.nav button[data-view]').forEach(b=>{
     if(b.dataset.view===state.view) b.setAttribute('aria-current','page');
@@ -640,7 +700,7 @@ function render(){
   const held = main.contains(document.activeElement) ? document.activeElement : null;
   const heldKey = held && held.getAttribute('aria-label') ? held.tagName+'|'+held.getAttribute('aria-label') : null;
 
-  main.innerHTML = ({home:viewHome,budget:viewBudget,goals:viewGoals,import:viewImport})[state.view]();
+  main.innerHTML = ({home:viewHome,trends:viewTrends,budget:viewBudget,goals:viewGoals,import:viewImport})[state.view]();
 
   window.scrollTo({top:y,behavior:'instant'});
   if(heldKey){
@@ -942,6 +1002,296 @@ function carryForward(){
   const months = Object.keys(state.snapshots).sort().filter(m=>m<state.month);
   return months.length ? state.snapshots[months[months.length-1]] : {};
 }
+
+/* ============================================================
+   TRENDS
+   ============================================================ */
+const CHART_COLORS = ['#F2C230','#4F8A6B','#3D5F80','#5B4E7A','#C4553D','#7A6428','#4C6367','#A8794F','#B9B4A6'];
+
+const trends = {mode:'category', cat:'groceries', interval:'month', bar:null,
+                range:'all', rMin:null, rMax:null};
+
+/* Last n month keys ending with the current month */
+function lastMonths(n){
+  const out=[];
+  for(let i=n-1;i>=0;i--){
+    const d=new Date(today.getFullYear(), today.getMonth()-i, 1);
+    out.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+  }
+  return out;
+}
+/* Last n Monday-start weeks, ending with the week containing today */
+function lastWeeks(n){
+  const out=[], base=new Date(today);
+  base.setDate(base.getDate() - ((base.getDay()+6)%7));   // back to Monday
+  for(let i=n-1;i>=0;i--){
+    const d=new Date(base); d.setDate(d.getDate()-i*7);
+    out.push({key:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`,
+              label:d.toLocaleDateString('en-US',{month:'short',day:'numeric'}), start:d});
+  }
+  return out;
+}
+const txInMonth = (cat,m) => state.transactions.filter(t=>t.cat===cat && t.date.slice(0,7)===m);
+function txInWeek(cat,w){
+  const end=new Date(w.start); end.setDate(end.getDate()+7);
+  return state.transactions.filter(t=>{
+    if(t.cat!==cat) return false;
+    const d=new Date(t.date+'T12:00:00');
+    return d>=w.start && d<end;
+  });
+}
+
+function viewTrends(){
+  return `
+  <div class="seg" role="group" aria-label="What to look at">
+    <button type="button" aria-pressed="${trends.mode==='category'}" onclick="setTrend('mode','category')">Category</button>
+    <button type="button" aria-pressed="${trends.mode==='year'}" onclick="setTrend('mode','year')">Past year</button>
+    <button type="button" aria-pressed="${trends.mode==='size'}" onclick="setTrend('mode','size')">By size</button>
+  </div>
+  ${trends.mode==='category' ? trendCategory() : trends.mode==='year' ? trendYear() : trendSize()}`;
+}
+
+/* ---------- Mode 1: one category over time ---------- */
+function trendCategory(){
+  const c = catById(trends.cat);
+  const weekly = trends.interval==='week';
+  const buckets = weekly
+    ? lastWeeks(12).map(w=>({label:w.label, tx:txInWeek(trends.cat,w)}))
+    : lastMonths(12).map(m=>({label:new Date(m+'-02').toLocaleDateString('en-US',{month:'short'}), tx:txInMonth(trends.cat,m), key:m}));
+  const vals = buckets.map(b=>b.tx.reduce((s,t)=>s+t.amount,0));
+  const max = Math.max(...vals,1);
+  const withData = vals.filter(v=>v>0);
+  const avg = withData.length ? withData.reduce((a,b)=>a+b,0)/withData.length : 0;
+  const latest = vals[vals.length-1];
+  const prev = vals[vals.length-2] || 0;
+  const delta = latest - prev;
+  const sel = trends.bar==null ? vals.length-1 : trends.bar;
+  const selBucket = buckets[sel];
+  const selTx = (selBucket?selBucket.tx:[]).slice().sort((a,b)=>b.amount-a.amount);
+
+  return `
+  <div class="catscroll" role="group" aria-label="Pick a category">
+    ${CATEGORIES.filter(x=>x.id!=='uncat').map(x=>`
+      <button type="button" aria-pressed="${x.id===trends.cat}" onclick="setTrend('cat','${x.id}')">
+        <span class="chip" style="background:var(--t-${x.tint});color:var(--t-${x.tint}-i)">${x.icon}</span>${esc(x.name)}
+      </button>`).join('')}
+  </div>
+
+  <section class="card">
+    <h2>${esc(c.name)}</h2>
+    <p class="hint">Last 12 ${weekly?'weeks':'months'} · tap a bar for detail</p>
+    <div class="seg" role="group" aria-label="Interval">
+      <button type="button" aria-pressed="${!weekly}" onclick="setTrend('interval','month')">Monthly</button>
+      <button type="button" aria-pressed="${weekly}" onclick="setTrend('interval','week')">Weekly</button>
+    </div>
+
+    <div class="bars">
+      ${buckets.map((b,i)=>`
+        <button type="button" class="barcol" aria-pressed="${i===sel}" aria-label="${esc(b.label)}: ${money(vals[i])}" onclick="setTrend('bar',${i})">
+          <span class="bv">${vals[i]?money(vals[i],false).replace('$',''):''}</span>
+          <span class="br" style="height:${Math.max(2, vals[i]/max*100)}%"></span>
+        </button>`).join('')}
+    </div>
+    <div class="barlabels">${buckets.map(b=>`<span>${esc(b.label)}</span>`).join('')}</div>
+
+    <div class="statrow" style="margin-bottom:0">
+      <div class="stat" style="box-shadow:none;background:var(--paper)">
+        <div class="k">Average</div><div class="v num">${money(avg,false)}</div>
+      </div>
+      <div class="stat" style="box-shadow:none;background:var(--paper)">
+        <div class="k">vs previous</div>
+        <div class="v num ${delta>0?'neg':'pos'}">${delta>0?'+':'−'}${money(delta,false)}</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>${esc(selBucket?selBucket.label:'')}</h2>
+    <p class="hint">${selTx.length} transaction${selTx.length===1?'':'s'} · ${money(vals[sel])}</p>
+    ${selTx.length ? selTx.map(t=>`
+      <div class="row">
+        <div class="body"><div class="name">${esc(t.desc)}</div><div class="meta">${shortDate(t.date)}</div></div>
+        <div class="right"><div class="val num">${money(t.amount,true)}</div></div>
+      </div>`).join('')
+    : `<div class="empty"><div class="mark">–</div><p>Nothing in ${esc(c.name)} for that ${weekly?'week':'month'}.</p></div>`}
+  </section>`;
+}
+
+/* ---------- Mode 2: past 12 months, all categories ---------- */
+function trendYear(){
+  const months = lastMonths(12);
+  const set = new Set(months);
+  const rows = CATEGORIES.map(c=>({
+    c, total: state.transactions.filter(t=>t.cat===c.id && set.has(t.date.slice(0,7))).reduce((s,t)=>s+t.amount,0)
+  })).filter(r=>r.total>0).sort((a,b)=>b.total-a.total);
+
+  /* 18 slices is unreadable — top 8 plus a combined rest */
+  const top = rows.slice(0,8);
+  const rest = rows.slice(8);
+  const restTotal = rest.reduce((s,r)=>s+r.total,0);
+  const slices = restTotal>0 ? [...top,{c:{name:`Everything else (${rest.length})`,icon:'',id:'_rest'},total:restTotal}] : top;
+  const total = rows.reduce((s,r)=>s+r.total,0);
+
+  const R=62, C=2*Math.PI*R;
+  let acc=0;
+  const arcs = slices.map((s,i)=>{
+    const frac = s.total/total, len = frac*C, off = -acc*C;
+    acc += frac;
+    return `<circle r="${R}" cx="90" cy="90" stroke="${CHART_COLORS[i]}" stroke-dasharray="${len.toFixed(2)} ${(C-len).toFixed(2)}" stroke-dashoffset="${off.toFixed(2)}"></circle>`;
+  }).join('');
+
+  const first = monthLabel(months[0]).replace(' ',' ');
+  const last  = monthLabel(months[11]);
+
+  return `
+  <section class="card">
+    <h2>Past 12 months</h2>
+    <p class="hint">${esc(first)} through ${esc(last)}</p>
+    <div class="donutwrap">
+      <svg width="180" height="180" viewBox="0 0 180 180" role="img" aria-label="Spending by category over the past 12 months, total ${money(total)}">
+        <g class="donut">${arcs}</g>
+        <g class="donutmid">
+          <text x="90" y="86" class="dm-big">${money(total,false)}</text>
+          <text x="90" y="104" class="dm-sm">TOTAL</text>
+        </g>
+      </svg>
+    </div>
+    ${slices.map((s,i)=>`
+      <div class="legrow">
+        <span class="dot" style="background:${CHART_COLORS[i]}"></span>
+        <span class="ln">${s.c.icon?s.c.icon+' ':''}${esc(s.c.name)}</span>
+        <span class="lp">${Math.round(s.total/total*100)}%</span>
+        <span class="lv">${money(s.total,false)}</span>
+      </div>`).join('')}
+  </section>
+
+  <section class="card">
+    <h2>Monthly total</h2>
+    <p class="hint">Every category combined, across the same 12 months</p>
+    ${(()=>{
+      const vals = months.map(m=>totalForMonth(m));
+      const max = Math.max(...vals,1);
+      const avg = vals.reduce((a,b)=>a+b,0)/12;
+      return `<div class="bars">
+        ${months.map((m,i)=>`<button type="button" class="barcol" aria-label="${esc(monthLabel(m))}: ${money(vals[i])}" onclick="jumpMonth('${m}')">
+          <span class="bv">${vals[i]?Math.round(vals[i]/1000*10)/10+'k':''}</span>
+          <span class="br" style="height:${Math.max(2,vals[i]/max*100)}%"></span>
+        </button>`).join('')}
+      </div>
+      <div class="barlabels">${months.map(m=>`<span>${new Date(m+'-02').toLocaleDateString('en-US',{month:'short'})}</span>`).join('')}</div>
+      <div class="row" style="border:0;padding-top:0"><div class="body"><div class="meta">Average ${money(avg,false)} a month · tap a bar to open that month</div></div></div>`;
+    })()}
+  </section>`;
+}
+
+/* ---------- Mode 3: by transaction size ---------- */
+const RANGES = [
+  {id:'all',   label:'All',        min:0,   max:null},
+  {id:'u50',   label:'Under $50',  min:0,   max:50},
+  {id:'50150', label:'$50–150',    min:50,  max:150},
+  {id:'150300',label:'$150–300',   min:150, max:300},
+  {id:'300up', label:'$300 and up',min:300, max:null},
+  {id:'custom',label:'Custom',     min:null,max:null}
+];
+
+function trendSize(){
+  const months = lastMonths(12);
+  const set = new Set(months);
+  const pool = state.transactions.filter(t=>set.has(t.date.slice(0,7)));
+  const r = RANGES.find(x=>x.id===trends.range);
+  const min = trends.range==='custom' ? (trends.rMin||0) : r.min;
+  const max = trends.range==='custom' ? trends.rMax : r.max;
+  const hits = pool.filter(t=>t.amount>=min && (max==null || t.amount<max))
+                   .sort((a,b)=>b.amount-a.amount);
+  const total = hits.reduce((s,t)=>s+t.amount,0);
+
+  /* distribution across fixed buckets, with the active range highlighted */
+  const edges=[0,25,50,75,100,150,200,300,500,1000];
+  const counts=edges.map((e,i)=>pool.filter(t=>t.amount>=e && (i===edges.length-1||t.amount<edges[i+1])).length);
+  const cmax=Math.max(...counts,1);
+
+  const byCat = {};
+  hits.forEach(t=>{ byCat[t.cat]=(byCat[t.cat]||0)+t.amount; });
+  const catRows = Object.entries(byCat).sort((a,b)=>b[1]-a[1]).slice(0,6);
+
+  return `
+  <section class="card">
+    <h2>By transaction size</h2>
+    <p class="hint">Across the past 12 months</p>
+    <div class="rangegrid" role="group" aria-label="Amount range">
+      ${RANGES.map(x=>`<button type="button" aria-pressed="${x.id===trends.range}" onclick="setTrend('range','${x.id}')">${esc(x.label)}</button>`).join('')}
+    </div>
+    ${trends.range==='custom' ? `
+      <div class="two">
+        <div class="field"><label for="rmin">From</label><input type="number" id="rmin" min="0" step="10" value="${trends.rMin??''}" placeholder="0" oninput="setCustom()"></div>
+        <div class="field"><label for="rmax">To</label><input type="number" id="rmax" min="0" step="10" value="${trends.rMax??''}" placeholder="no limit" oninput="setCustom()"></div>
+      </div>` : ''}
+
+    <div class="hist" role="img" aria-label="Distribution of transaction sizes">
+      ${counts.map((n,i)=>{
+        const lo=edges[i], hi=i===edges.length-1?null:edges[i+1];
+        const on = lo>=min && (max==null || (hi!=null && hi<=max) || (hi==null && max==null));
+        return `<i class="${on?'on':''}" style="height:${Math.max(2,n/cmax*100)}%" title="${n} between $${lo}${hi?'–$'+hi:'+'}"></i>`;
+      }).join('')}
+    </div>
+    <div class="histlabels"><span>$0</span><span>$100</span><span>$300</span><span>$1k+</span></div>
+
+    <div class="statrow" style="margin:var(--s4) 0 0">
+      <div class="stat" style="box-shadow:none;background:var(--paper)">
+        <div class="k">Transactions</div><div class="v num">${hits.length}</div>
+      </div>
+      <div class="stat" style="box-shadow:none;background:var(--paper)">
+        <div class="k">Total</div><div class="v num">${money(total,false)}</div>
+      </div>
+    </div>
+  </section>
+
+  ${catRows.length ? `
+  <section class="card">
+    <h2>Where it goes</h2>
+    <p class="hint">Categories with the most spending in this range</p>
+    ${catRows.map(([id,v])=>{
+      const c=catById(id);
+      return `<div class="row">
+        <div class="chip" style="background:var(--t-${c.tint});color:var(--t-${c.tint}-i)">${c.icon}</div>
+        <div class="body"><div class="name">${esc(c.name)}</div>
+          <div class="meta">${Math.round(v/total*100)}% of this range</div></div>
+        <div class="right"><div class="val num">${money(v,false)}</div></div>
+      </div>`;
+    }).join('')}
+  </section>` : ''}
+
+  <section class="card">
+    <h2>Matching transactions</h2>
+    <p class="hint">${hits.length} found · largest first</p>
+    ${hits.length ? hits.slice(0,40).map(t=>{
+      const c=catById(t.cat);
+      return `<button type="button" class="row" onclick="editTx('${t.id}')">
+        <div class="chip" style="background:var(--t-${c.tint});color:var(--t-${c.tint}-i)">${c.icon}</div>
+        <div class="body"><div class="name">${esc(t.desc)}</div>
+          <div class="meta">${shortDate(t.date)} · ${esc(c.name)}</div></div>
+        <div class="right"><div class="val num">${money(t.amount,true)}</div></div>
+      </button>`;
+    }).join('') + (hits.length>40?`<div class="row" style="border:0"><div class="body"><div class="meta">Showing the 40 largest of ${hits.length}.</div></div></div>`:'')
+    : `<div class="empty"><div class="mark">–</div><p>Nothing in that range over the past 12 months.</p></div>`}
+  </section>`;
+}
+
+function setTrend(k,v){
+  if(k==='cat' || k==='interval') trends.bar=null;
+  trends[k]=v; render();
+}
+function setCustom(){
+  /* Each keystroke re-renders, which replaces both inputs — so put the
+     cursor back in the field being typed in, not always the first one. */
+  const editing = document.activeElement && document.activeElement.id === 'rmax' ? 'rmax' : 'rmin';
+  const a=parseFloat(document.getElementById('rmin').value);
+  const b=parseFloat(document.getElementById('rmax').value);
+  trends.rMin=isFinite(a)?a:null; trends.rMax=isFinite(b)?b:null;
+  render();
+  const f=document.getElementById(editing); if(f) f.focus();
+}
+function jumpMonth(m){ state.month=m; go('home'); }
 
 /* ---------- IMPORT ---------- */
 function viewImport(){
@@ -1786,6 +2136,7 @@ function removeRule(i){ state.rules.splice(i,1); render(); flash('Rule removed.'
 function go(v){ state.view = v; render(); window.scrollTo({top:0,behavior:'instant'}); }
 document.querySelectorAll('.nav button[data-view]').forEach(b=>b.addEventListener('click',()=>go(b.dataset.view)));
 document.getElementById('fabBtn').addEventListener('click', quickAdd);
+document.getElementById('importBtn').addEventListener('click', ()=>go('import'));
 document.getElementById('prevMonth').addEventListener('click', ()=>shiftMonth(-1));
 document.getElementById('nextMonth').addEventListener('click', ()=>shiftMonth(1));
 function shiftMonth(d){
