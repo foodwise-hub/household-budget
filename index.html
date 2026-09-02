@@ -560,10 +560,15 @@ const monthTx = () => state.transactions.filter(t => t.date.slice(0,7) === state
 const spentTotal = () => monthTx().reduce((s,t)=>s+t.amount,0);
 const spentByCat = id => monthTx().filter(t=>t.cat===id).reduce((s,t)=>s+t.amount,0);
 
+/* A recurring payment with a startMonth only applies from that month on —
+   used when one is created from an existing past transaction, so marking
+   an old charge as recurring doesn't rewrite history before that point. */
+const recurringActive = (r,m) => !r.startMonth || m >= r.startMonth;
+
 /* Which recurring payments have NOT landed yet this month */
 function unpaidRecurring(){
   const paid = new Set(monthTx().map(t=>t.rec).filter(Boolean));
-  return state.recurring.filter(r=>!paid.has(r.id));
+  return state.recurring.filter(r=>recurringActive(r,state.month) && !paid.has(r.id));
 }
 const committedTotal = () => unpaidRecurring().reduce((s,r)=>s+r.amount,0);
 const committedByCat = id => unpaidRecurring().filter(r=>r.cat===id).reduce((s,r)=>s+r.amount,0);
@@ -573,7 +578,7 @@ function postDueAutopays(){
   if(!isCurrentMonth()) return;
   const paid = new Set(monthTx().map(t=>t.rec).filter(Boolean));
   state.recurring.forEach(r=>{
-    if(r.method!=='auto' || paid.has(r.id)) return;
+    if(r.method!=='auto' || paid.has(r.id) || !recurringActive(r,state.month)) return;
     if(today.getDate() >= r.day){
       state.transactions.push({
         id:uid('t'), date:`${state.month}-${String(r.day).padStart(2,'0')}`,
@@ -603,7 +608,7 @@ function backfillPastAutopays(){
   Object.keys(byMonth).forEach(m=>{
     if(m >= cur) return;                       // only completed months
     state.recurring.forEach(r=>{
-      if(r.method!=='auto' || byMonth[m].ids.has(r.id)) return;
+      if(r.method!=='auto' || byMonth[m].ids.has(r.id) || !recurringActive(r,m)) return;
       const day = Math.min(r.day, daysInMonth(m));
       state.transactions.push({
         id:uid('t'), date:`${m}-${String(day).padStart(2,'0')}`,
@@ -895,6 +900,7 @@ function viewBudget(){
           <div class="meta" style="display:flex;gap:5px;flex-wrap:wrap;margin-top:4px">
             <span class="tag ${r.method==='card'?'card-t':'auto-t'}">${r.method==='card'?'Card':'Autopay '+ordinal(r.day)}</span>
             ${r.estimated?'<span class="tag est">Estimated</span>':''}
+            ${r.startMonth?`<span class="tag" style="background:var(--t-mist);color:var(--t-mist-i)">Since ${esc(monthLabel(r.startMonth))}</span>`:''}
           </div>
         </div>
         <div class="right"><div class="val num">${money(r.amount,true)}</div></div>
@@ -1009,7 +1015,7 @@ function carryForward(){
    ============================================================ */
 const CHART_COLORS = ['#F2C230','#4F8A6B','#3D5F80','#5B4E7A','#C4553D','#7A6428','#4C6367','#A8794F','#B9B4A6'];
 
-const trends = {mode:'category', cat:'groceries', interval:'month', bar:null,
+const trends = {mode:'category', cats:new Set(['groceries']), interval:'month', bar:null,
                 range:'all', rMin:null, rMax:null};
 
 /* Last n month keys ending with the current month */
@@ -1035,14 +1041,14 @@ function lastWeeks(n){
   }
   return out;
 }
-const txInMonth = (cat,m) => state.transactions.filter(t=>t.cat===cat && t.date.slice(0,7)===m);
+const txInMonth = (cats,m) => state.transactions.filter(t=>cats.has(t.cat) && t.date.slice(0,7)===m);
 /* Bar columns are only ~20px wide, so thousands are shortened to fit.
    The exact figure is in the bar's aria-label and in the detail card. */
 const barValue = v => !v ? '' : v >= 1000 ? Math.round(v/100)/10+'k' : String(Math.round(v));
-function txInWeek(cat,w){
+function txInWeek(cats,w){
   const end=new Date(w.start); end.setDate(end.getDate()+7);
   return state.transactions.filter(t=>{
-    if(t.cat!==cat) return false;
+    if(!cats.has(t.cat)) return false;
     const d=new Date(t.date+'T12:00:00');
     return d>=w.start && d<end;
   });
@@ -1060,33 +1066,40 @@ function viewTrends(){
 
 /* ---------- Mode 1: one category over time ---------- */
 function trendCategory(){
-  const c = catById(trends.cat);
+  const selectedCats = CATEGORIES.filter(x=>trends.cats.has(x.id));  // stable order -> stable colors
   const weekly = trends.interval==='week';
-  const buckets = weekly
-    ? lastWeeks(12).map(w=>({label:w.label, tx:txInWeek(trends.cat,w)}))
-    : lastMonths(12).map(m=>({label:new Date(m+'-02').toLocaleDateString('en-US',{month:'short'}), tx:txInMonth(trends.cat,m), key:m}));
-  const vals = buckets.map(b=>b.tx.reduce((s,t)=>s+t.amount,0));
+  const rawBuckets = weekly ? lastWeeks(12) : lastMonths(12);
+  const buckets = rawBuckets.map(b=>{
+    const label = weekly ? b.label : new Date(b+'-02').toLocaleDateString('en-US',{month:'short'});
+    const tx = weekly ? txInWeek(trends.cats,b) : txInMonth(trends.cats,b);
+    const perCat = selectedCats.map(c=>tx.filter(t=>t.cat===c.id).reduce((s,t)=>s+t.amount,0));
+    return {label, tx, perCat, total: perCat.reduce((a,b)=>a+b,0)};
+  });
+  const vals = buckets.map(b=>b.total);
   const max = Math.max(...vals,1);
   const withData = vals.filter(v=>v>0);
   const avg = withData.length ? withData.reduce((a,b)=>a+b,0)/withData.length : 0;
-  const latest = vals[vals.length-1];
-  const prev = vals[vals.length-2] || 0;
-  const delta = latest - prev;
+  const delta = vals[vals.length-1] - (vals[vals.length-2] || 0);
   const sel = trends.bar==null ? vals.length-1 : trends.bar;
   const selBucket = buckets[sel];
   const selTx = (selBucket?selBucket.tx:[]).slice().sort((a,b)=>b.amount-a.amount);
 
+  const heading = selectedCats.length===1 ? selectedCats[0].name
+    : selectedCats.length<=3 ? selectedCats.map(c=>c.name).join(' + ')
+    : `${selectedCats.length} categories`;
+  const rangeTotal = selectedCats.map((c,i)=>buckets.reduce((s,b)=>s+b.perCat[i],0));
+
   return `
-  <div class="catscroll" role="group" aria-label="Pick a category">
+  <div class="catscroll" role="group" aria-label="Pick one or more categories">
     ${CATEGORIES.filter(x=>x.id!=='uncat').map(x=>`
-      <button type="button" aria-pressed="${x.id===trends.cat}" onclick="setTrend('cat','${x.id}')">
+      <button type="button" aria-pressed="${trends.cats.has(x.id)}" onclick="toggleTrendCat('${x.id}')">
         <span class="chip" style="background:var(--t-${x.tint});color:var(--t-${x.tint}-i)">${x.icon}</span>${esc(x.name)}
       </button>`).join('')}
   </div>
 
   <section class="card">
-    <h2>${esc(c.name)}</h2>
-    <p class="hint">Last 12 ${weekly?'weeks':'months'} · tap a bar for detail</p>
+    <h2>${esc(heading)}</h2>
+    <p class="hint">Last 12 ${weekly?'weeks':'months'} · tap a bar for detail${selectedCats.length>1?' · tap a category above to add or remove it':''}</p>
     <div class="seg" role="group" aria-label="Interval">
       <button type="button" aria-pressed="${!weekly}" onclick="setTrend('interval','month')">Monthly</button>
       <button type="button" aria-pressed="${weekly}" onclick="setTrend('interval','week')">Weekly</button>
@@ -1094,12 +1107,22 @@ function trendCategory(){
 
     <div class="bars">
       ${buckets.map((b,i)=>`
-        <button type="button" class="barcol" aria-pressed="${i===sel}" aria-label="${esc(b.label)}: ${money(vals[i])}" onclick="setTrend('bar',${i})">
-          <span class="bv">${barValue(vals[i])}</span>
-          <span class="br" style="height:${Math.max(2, vals[i]/max*100)}%"></span>
+        <button type="button" class="barcol" aria-pressed="${i===sel}" aria-label="${esc(b.label)}: ${money(b.total)}" onclick="setTrend('bar',${i})">
+          <span class="bv">${barValue(b.total)}</span>
+          <span class="br" style="height:${Math.max(2, b.total/max*100)}%;display:flex;flex-direction:column-reverse;overflow:hidden;background:${selectedCats.length>1?'transparent':'var(--signal)'}">
+            ${selectedCats.length>1 ? selectedCats.map((c,ci)=>b.total>0 && b.perCat[ci]>0
+                ? `<span style="flex:0 0 ${(b.perCat[ci]/b.total*100).toFixed(2)}%;background:${CHART_COLORS[ci%CHART_COLORS.length]}"></span>` : '').join('') : ''}
+          </span>
         </button>`).join('')}
     </div>
     <div class="barlabels">${buckets.map(b=>`<span>${esc(b.label)}</span>`).join('')}</div>
+
+    ${selectedCats.length>1 ? selectedCats.map((c,i)=>`
+      <div class="legrow">
+        <span class="dot" style="background:${CHART_COLORS[i%CHART_COLORS.length]}"></span>
+        <span class="ln">${c.icon} ${esc(c.name)}</span>
+        <span class="lv">${money(rangeTotal[i],false)}</span>
+      </div>`).join('') : ''}
 
     <div class="statrow" style="margin-bottom:0">
       <div class="stat" style="box-shadow:none;background:var(--paper)">
@@ -1115,12 +1138,15 @@ function trendCategory(){
   <section class="card">
     <h2>${esc(selBucket?selBucket.label:'')}</h2>
     <p class="hint">${selTx.length} transaction${selTx.length===1?'':'s'} · ${money(vals[sel])}</p>
-    ${selTx.length ? selTx.map(t=>`
-      <div class="row">
-        <div class="body"><div class="name">${esc(t.desc)}</div><div class="meta">${shortDate(t.date)}</div></div>
+    ${selTx.length ? selTx.map(t=>{
+      const tc = catById(t.cat);
+      return `<div class="row">
+        ${selectedCats.length>1?`<div class="chip" style="background:var(--t-${tc.tint});color:var(--t-${tc.tint}-i)">${tc.icon}</div>`:''}
+        <div class="body"><div class="name">${esc(t.desc)}</div><div class="meta">${shortDate(t.date)}${selectedCats.length>1?' · '+esc(tc.name):''}</div></div>
         <div class="right"><div class="val num">${money(t.amount,true)}</div></div>
-      </div>`).join('')
-    : `<div class="empty"><div class="mark">–</div><p>Nothing in ${esc(c.name)} for that ${weekly?'week':'month'}.</p></div>`}
+      </div>`;
+    }).join('')
+    : `<div class="empty"><div class="mark">–</div><p>Nothing in ${esc(heading)} for that ${weekly?'week':'month'}.</p></div>`}
   </section>`;
 }
 
@@ -1286,8 +1312,15 @@ function trendSize(){
 }
 
 function setTrend(k,v){
-  if(k==='cat' || k==='interval') trends.bar=null;
+  if(k==='interval') trends.bar=null;
   trends[k]=v; render();
+}
+function toggleTrendCat(id){
+  if(trends.cats.has(id)){
+    if(trends.cats.size>1) trends.cats.delete(id);   // always keep at least one selected
+  } else trends.cats.add(id);
+  trends.bar=null;
+  render();
 }
 function setCustom(){
   /* Each keystroke re-renders, which replaces both inputs — so put the
@@ -1541,6 +1574,11 @@ function editTx(id){
       ${t.oneoff ? `<div style="margin-top:var(--s3)"><button type="button" class="btn ghost sm" onclick="raiseForTx('${t.id}')">Raise ${esc(monthLabel(state.month).split(' ')[0])} by ${money(t.amount,false)}</button></div>` : ''}
     </div>
 
+    ${!t.rec ? `<div style="margin-bottom:var(--s5)">
+      <button type="button" class="btn ghost" onclick="makeTxRecurring('${t.id}')">Make this a recurring payment</button>
+      <div style="font-size:12.5px;color:var(--muted);margin-top:var(--s2)">Applies from ${esc(monthLabel(thisMonthKey()))} onward — it won't rewrite past months, even if you picked this from an older one.</div>
+    </div>` : ''}
+
     <div class="pickgrid" style="margin-bottom:var(--s5)">
       ${CATEGORIES.map(c=>`
         <button type="button" class="pick" aria-pressed="${c.id===t.cat}" data-cat="${c.id}" onclick="setTxCat('${t.id}','${c.id}')">
@@ -1567,6 +1605,21 @@ function raiseForTx(id){
               : t.cat==='home' ? 'Home repair' : 'Large purchase';
   addRaise({amount:t.amount, reason:guess, note:t.desc});
 }
+let pendingTxLink = null;
+
+function makeTxRecurring(id){
+  const t = state.transactions.find(x=>x.id===id);
+  if(!t) return;
+  const word = t.desc.split(/[\s*#]/).filter(w=>w.length>3)[0];
+  pendingTxLink = id;
+  editRecurring(null, {
+    name: t.desc, amount: t.amount, cat: t.cat,
+    method: t.src==='manual' ? 'auto' : 'card',
+    match: (word || t.desc).toUpperCase(),
+    estimated: false
+  });
+}
+
 function setTxCat(txId, catId){
   const t = state.transactions.find(x=>x.id===txId);
   t.cat = catId;
@@ -1591,30 +1644,32 @@ function deleteTx(id){
   closeSheet(); render(); flash('Transaction deleted.');
 }
 
-function editRecurring(id){
+function editRecurring(id, prefill){
   const r = id ? state.recurring.find(x=>x.id===id) : null;
+  if(!prefill) pendingTxLink = null;   // opened on its own, not from a transaction
+  const pf = r || prefill || null;
   openSheet(`
     <h2 id="sheetTitle">${r?'Edit recurring payment':'New recurring payment'}</h2>
-    <p class="hint">Committed money — it shows faded on your spending bar until it actually lands.</p>
+    <p class="hint">${prefill && !r ? 'Applies from this month on — past months are left as they were.' : 'Committed money — it shows faded on your spending bar until it actually lands.'}</p>
     <div class="field"><label for="rName">Name</label>
-      <input type="text" id="rName" value="${r?esc(r.name):''}" placeholder="e.g. Car insurance" autocomplete="off"></div>
+      <input type="text" id="rName" value="${pf?esc(pf.name):''}" placeholder="e.g. Car insurance" autocomplete="off"></div>
     <div class="two">
       <div class="field"><label for="rAmt">Amount</label>
-        <input type="number" id="rAmt" step="0.01" min="0" value="${r?r.amount:''}" placeholder="0.00"></div>
+        <input type="number" id="rAmt" step="0.01" min="0" value="${pf?pf.amount:''}" placeholder="0.00"></div>
       <div class="field"><label for="rCat">Category</label>
-        <select id="rCat">${CATEGORIES.filter(c=>c.id!=='uncat').map(c=>`<option value="${c.id}" ${r&&r.cat===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
+        <select id="rCat">${CATEGORIES.filter(c=>c.id!=='uncat').map(c=>`<option value="${c.id}" ${pf&&pf.cat===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
     </div>
     <div class="field">
       <label>How is it paid?</label>
       <div class="seg" role="group">
-        <button type="button" data-m="card" aria-pressed="${!r||r.method==='card'}" onclick="setMethod('card')">Chase card</button>
-        <button type="button" data-m="auto" aria-pressed="${!!r&&r.method==='auto'}" onclick="setMethod('auto')">Not on the card</button>
+        <button type="button" data-m="card" aria-pressed="${!pf||pf.method==='card'}" onclick="setMethod('card')">Chase card</button>
+        <button type="button" data-m="auto" aria-pressed="${!!pf&&pf.method==='auto'}" onclick="setMethod('auto')">Not on the card</button>
       </div>
     </div>
     <div id="methodFields"></div>
     <div class="field">
       <label style="display:flex;align-items:center;justify-content:space-between">Amount varies month to month
-        <button type="button" class="switch" role="switch" id="rEst" aria-checked="${r?r.estimated:false}" aria-label="Amount varies" onclick="this.setAttribute('aria-checked', this.getAttribute('aria-checked')==='true'?'false':'true')"></button>
+        <button type="button" class="switch" role="switch" id="rEst" aria-checked="${pf?pf.estimated:false}" aria-label="Amount varies" onclick="this.setAttribute('aria-checked', this.getAttribute('aria-checked')==='true'?'false':'true')"></button>
       </label>
       <div style="font-size:12.5px;color:var(--muted)">The amount above is used as an estimate until the real charge arrives.</div>
     </div>
@@ -1624,7 +1679,7 @@ function editRecurring(id){
       ${r?`<button type="button" class="btn danger" onclick="deleteRecurring('${r.id}')">Delete</button>`:''}
     </div>
   `);
-  setMethod(r?r.method:'card', r);
+  setMethod(pf?pf.method:'card', pf);
 }
 function setMethod(m, r){
   document.querySelectorAll('.seg button[data-m]').forEach(b=>b.setAttribute('aria-pressed', String(b.dataset.m===m)));
@@ -1662,10 +1717,23 @@ function saveRecurring(id){
   }
   if(id){
     Object.assign(state.recurring.find(r=>r.id===id), {name,amount,cat,method,day,match,estimated});
-  } else {
-    state.recurring.push({id:uid('r'), name, amount, cat, method, day, match, estimated});
+    closeSheet(); render(); flash('Recurring payment updated.');
+    return;
   }
-  closeSheet(); render(); flash(id?'Recurring payment updated.':`${esc(name)} added to your recurring payments.`);
+  const newId = uid('r');
+  const rec = {id:newId, name, amount, cat, method, day, match, estimated};
+  if(pendingTxLink){
+    rec.startMonth = thisMonthKey();
+    const src = state.transactions.find(x=>x.id===pendingTxLink);
+    if(src) src.rec = newId;
+  }
+  state.recurring.push(rec);
+  const wasLinked = !!pendingTxLink;
+  pendingTxLink = null;
+  closeSheet(); render();
+  flash(wasLinked
+    ? `${esc(name)} will be tracked as recurring from ${esc(monthLabel(thisMonthKey()))} on.`
+    : `${esc(name)} added to your recurring payments.`);
 }
 function deleteRecurring(id){
   state.recurring = state.recurring.filter(r=>r.id!==id);
@@ -2242,7 +2310,7 @@ function signOut(){
 const SHEETS_BASE = 'https://sheets.googleapis.com/v4/spreadsheets/' + SHEET_ID;
 const TABS = {
   Transactions: ['id','date','desc','amount','cat','src','rec','oneoff','approx'],
-  Recurring:    ['id','name','amount','cat','method','day','match','estimated'],
+  Recurring:    ['id','name','amount','cat','method','day','match','estimated','startMonth'],
   Budgets:      ['cat','on','amount','name'],
   Goals:        ['id','name','target','monthly','accounts'],
   Accounts:     ['id','name','type'],
@@ -2288,12 +2356,18 @@ async function loadAll(){
     return t;
   });
 
-  state.recurring = rows('Recurring').filter(r=>S(r[0])).map(r=>({
-    id:S(r[0]), name:S(r[1]), amount:N(r[2]), cat:S(r[3])||'uncat',
-    method:S(r[4])==='auto'?'auto':'card',
-    day: S(r[5])==='' ? null : Math.round(N(r[5])),
-    match:S(r[6]), estimated:B(r[7])
-  }));
+  state.recurring = rows('Recurring').filter(r=>S(r[0])).map(r=>{
+    const rec = {
+      id:S(r[0]), name:S(r[1]), amount:N(r[2]), cat:S(r[3])||'uncat',
+      method:S(r[4])==='auto'?'auto':'card',
+      day: S(r[5])==='' ? null : Math.round(N(r[5])),
+      match:S(r[6]), estimated:B(r[7])
+    };
+    /* Added after the first rows were written, so anything saved before it
+       existed simply has no cell here — and no startMonth means always on. */
+    if(S(r[8])) rec.startMonth = S(r[8]);
+    return rec;
+  });
 
   const bud = CATEGORIES.reduce((o,c)=>(o[c.id]={on:false,amount:0},o),{});
   let overall = {on:false, amount:0};
@@ -2337,7 +2411,7 @@ function tabValues(){
   v.Transactions = [TABS.Transactions].concat(state.transactions.map(t=>
     [t.id, t.date, t.desc, t.amount, t.cat, t.src, t.rec||'', t.oneoff?true:'', t.approx?true:'']));
   v.Recurring = [TABS.Recurring].concat(state.recurring.map(r=>
-    [r.id, r.name, r.amount, r.cat, r.method, r.day==null?'':r.day, r.match||'', r.estimated?true:'']));
+    [r.id, r.name, r.amount, r.cat, r.method, r.day==null?'':r.day, r.match||'', r.estimated?true:'', r.startMonth||'']));
   v.Budgets = [TABS.Budgets].concat(
     CATEGORIES.map(c=>[c.id, !!state.budgets[c.id].on, state.budgets[c.id].amount||0, '']),
     [['__overall__', !!state.overall.on, state.overall.amount||0, ''],
